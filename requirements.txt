@@ -1,0 +1,5 @@
+gym-pybullet-drones @ git+https://github.com/utiasDSL/gym-pybullet-drones.git
+opencv-python
+numpy
+imageio
+imageio-ffmpeg
