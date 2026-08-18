@@ -1,0 +1,800 @@
+% Mathematical Interpretation of Vision-Based UAV Target Tracking
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{amsmath,amssymb,bm}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+
+\geometry{margin=1in}
+
+\title{\textbf{Mathematical Interpretation of Vision-Based UAV Target Tracking}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+This project implements a vision-based moving-target tracking system for a quadrotor UAV in a PyBullet simulation. A colored target moves through the environment and is observed using the UAV's camera. Computer vision detects the target in the image, and a feedback controller uses the detected image position and apparent target size to control the UAV.
+
+The complete mathematical operation is
+
+\begin{equation}
+\boxed{
+\text{Target Motion}
+\rightarrow
+\text{Camera Observation}
+\rightarrow
+\text{Target Detection}
+\rightarrow
+\text{Tracking Error}
+\rightarrow
+\text{PD Control}
+\rightarrow
+\text{UAV Motion}
+\rightarrow
+\text{New Observation}
+}
+\end{equation}
+
+Thus, the project is a closed-loop visual feedback control system.
+
+\section{1. Moving Target Model}
+
+The target position in world coordinates is
+
+\begin{equation}
+\mathbf{p}_T(t)=
+\begin{bmatrix}
+x_T(t)\\y_T(t)\\z_T(t)
+\end{bmatrix}.
+\end{equation}
+
+For the default circular trajectory used in the code,
+
+\begin{equation}
+x_T(t)=x_C+R\cos(\omega t),
+\end{equation}
+
+\begin{equation}
+y_T(t)=y_C+R\sin(\omega t),
+\end{equation}
+
+\begin{equation}
+z_T(t)=h.
+\end{equation}
+
+Therefore,
+
+\begin{equation}
+\boxed{
+\mathbf{p}_T(t)=
+\begin{bmatrix}
+x_C+R\cos(\omega t)\\
+y_C+R\sin(\omega t)\\
+h
+\end{bmatrix}
+}
+\end{equation}
+
+where $R$ is the trajectory radius, $\omega$ is the speed parameter, $(x_C,y_C)$ is the trajectory centre, and $h$ is the target altitude.
+
+For the current implementation,
+
+\begin{equation}
+R=1.5\,\mathrm{m},\qquad
+\omega=0.4,\qquad
+h=1.0\,\mathrm{m}.
+\end{equation}
+
+The target velocity is
+
+\begin{equation}
+\mathbf{v}_T(t)=
+\frac{d\mathbf{p}_T(t)}{dt}
+=
+\begin{bmatrix}
+-R\omega\sin(\omega t)\\
+R\omega\cos(\omega t)\\
+0
+\end{bmatrix}.
+\end{equation}
+
+\section{2. UAV--Target Geometry}
+
+Let the UAV position be
+
+\begin{equation}
+\mathbf{p}_D(t)=
+\begin{bmatrix}
+x_D(t)\\y_D(t)\\z_D(t)
+\end{bmatrix}.
+\end{equation}
+
+The relative target position is
+
+\begin{equation}
+\boxed{
+\mathbf{p}_{rel}(t)=\mathbf{p}_T(t)-\mathbf{p}_D(t)
+}
+\end{equation}
+
+and the relative distance is
+
+\begin{equation}
+d(t)=\|\mathbf{p}_{rel}(t)\|.
+\end{equation}
+
+The controller does not directly use this 3-D distance. Instead, it estimates relative distance indirectly from the target's apparent image size.
+
+\section{3. Camera Projection}
+
+Let the target position in the camera coordinate system be
+
+\begin{equation}
+\mathbf{p}_{TC}=
+\begin{bmatrix}
+X_C\\Y_C\\Z_C
+\end{bmatrix}.
+\end{equation}
+
+A perspective camera projects this 3-D point onto image coordinates:
+
+\begin{equation}
+\boxed{
+u=f_x\frac{X_C}{Z_C}+c_x
+}
+\end{equation}
+
+and
+
+\begin{equation}
+\boxed{
+v=f_y\frac{Y_C}{Z_C}+c_y.
+}
+\end{equation}
+
+Here $(u,v)$ are pixel coordinates, $f_x,f_y$ are focal lengths, and $(c_x,c_y)$ is the principal point.
+
+PyBullet performs the actual rendering in the implementation, but these equations explain mathematically why changes in UAV position and orientation change the target's image position.
+
+\section{4. HSV Color Segmentation}
+
+The RGB camera image is converted to HSV:
+
+\begin{equation}
+I_{RGB}(u,v)\rightarrow I_{HSV}(u,v).
+\end{equation}
+
+The default green-target threshold is
+
+\begin{equation}
+35\leq H\leq85,
+\end{equation}
+
+\begin{equation}
+80\leq S\leq255,
+\end{equation}
+
+\begin{equation}
+80\leq V\leq255.
+\end{equation}
+
+The binary mask is therefore
+
+\begin{equation}
+\boxed{
+M(u,v)=
+\begin{cases}
+1,&35\leq H\leq85,\;80\leq S\leq255,\;80\leq V\leq255,\\
+0,&\text{otherwise}.
+\end{cases}
+}
+\end{equation}
+
+Morphological erosion and dilation are then applied to reduce small noisy regions.
+
+\section{5. Target Detection}
+
+Contours are extracted from the binary mask. The largest valid contour is selected:
+
+\begin{equation}
+\boxed{
+C^*=\underset{C_i}{\operatorname{argmax}}\;A(C_i)
+}
+\end{equation}
+
+subject to
+
+\begin{equation}
+A(C_i)\geq15.
+\end{equation}
+
+A minimum enclosing circle is fitted to the selected contour. The visual measurement returned by the tracker is
+
+\begin{equation}
+\boxed{
+\mathbf{s}=
+\begin{bmatrix}
+c_x\\c_y\\r_{px}
+\end{bmatrix}
+}
+\end{equation}
+
+where $c_x,c_y$ are the target centre coordinates in pixels and $r_{px}$ is its apparent radius.
+
+\section{6. Desired Visual State}
+
+The camera resolution is
+
+\begin{equation}
+W=320,\qquad H=240.
+\end{equation}
+
+Hence the desired image centre is
+
+\begin{equation}
+c_x^*=\frac{W}{2}=160,
+\end{equation}
+
+\begin{equation}
+c_y^*=\frac{H}{2}=120.
+\end{equation}
+
+The controller uses a desired target radius of
+
+\begin{equation}
+r_{px}^*=45.
+\end{equation}
+
+Therefore,
+
+\begin{equation}
+\boxed{
+\mathbf{s}^*=
+\begin{bmatrix}
+160\\120\\45
+\end{bmatrix}.
+}
+\end{equation}
+
+The overall visual objective is
+
+\begin{equation}
+\boxed{
+\mathbf{s}\rightarrow\mathbf{s}^*
+}
+\end{equation}
+
+or
+
+\begin{equation}
+\boxed{
+c_x\rightarrow160,\qquad
+c_y\rightarrow120,\qquad
+r_{px}\rightarrow45.
+}
+\end{equation}
+
+\section{7. Visual Tracking Errors}
+
+The horizontal error is
+
+\begin{equation}
+\boxed{
+e_x=c_x-160.
+}
+\end{equation}
+
+The vertical error is
+
+\begin{equation}
+\boxed{
+e_z=120-c_y.
+}
+\end{equation}
+
+The distance-related error is
+
+\begin{equation}
+\boxed{
+e_d=45-r_{px}.
+}
+\end{equation}
+
+Thus, the visual error vector can be written as
+
+\begin{equation}
+\boxed{
+\mathbf{e}=
+\begin{bmatrix}
+e_x\\e_z\\e_d
+\end{bmatrix}.
+}
+\end{equation}
+
+Successful tracking corresponds to
+
+\begin{equation}
+\boxed{
+\mathbf{e}\rightarrow\mathbf{0}.
+}
+\end{equation}
+
+\section{8. Apparent Target Size and Distance}
+
+The project uses the apparent radius of the target as an indirect distance measurement.
+
+For a target of physical radius $R_T$, perspective projection gives approximately
+
+\begin{equation}
+\boxed{
+r_{px}\approx\frac{fR_T}{Z}
+}
+\end{equation}
+
+where $f$ is the camera focal length and $Z$ is target depth from the camera.
+
+Therefore,
+
+\begin{equation}
+r_{px}\propto\frac{1}{Z}.
+\end{equation}
+
+Hence,
+
+\begin{equation}
+r_{px}\downarrow\Rightarrow Z\uparrow
+\end{equation}
+
+and
+
+\begin{equation}
+r_{px}\uparrow\Rightarrow Z\downarrow.
+\end{equation}
+
+This explains why the controller can use target size to determine whether the UAV should move forward or backward, even though the code does not explicitly calculate $Z$.
+
+\section{9. PD Control Law}
+
+The class in the code is named \texttt{PIDController}, but the integral gain is set to zero:
+
+\begin{equation}
+K_I=0.
+\end{equation}
+
+Therefore, the implemented controller is mathematically a PD controller.
+
+The discrete-time control law is
+
+\begin{equation}
+\boxed{
+u(k)=K_Pe(k)+
+K_D\frac{e(k)-e(k-1)}{\Delta t}.
+}
+\end{equation}
+
+The control frequency is
+
+\begin{equation}
+f_{ctrl}=48\,\mathrm{Hz},
+\end{equation}
+
+so
+
+\begin{equation}
+\boxed{
+\Delta t=\frac{1}{48}\approx0.02083\,\mathrm{s}.
+}
+\end{equation}
+
+The proportional term responds to the current error, while the derivative term responds to the rate of change of the error and helps reduce oscillation.
+
+\section{10. Yaw Control}
+
+The horizontal error controls the UAV yaw rate.
+
+The implemented gains are
+
+\begin{equation}
+K_{P,yaw}=0.010,\qquad
+K_{D,yaw}=0.002.
+\end{equation}
+
+Therefore,
+
+\begin{equation}
+\boxed{
+\dot{\psi}
+=
+\operatorname{sat}_{[-2,2]}
+\left[
+0.010e_x+
+0.002
+\frac{e_x(k)-e_x(k-1)}
+{\Delta t}
+\right].
+}
+\end{equation}
+
+The objective is
+
+\begin{equation}
+c_x\rightarrow160.
+\end{equation}
+
+\section{11. Altitude Control}
+
+The vertical error controls UAV vertical velocity.
+
+The gains are
+
+\begin{equation}
+K_{P,z}=0.008,\qquad
+K_{D,z}=0.002.
+\end{equation}
+
+Thus,
+
+\begin{equation}
+\boxed{
+v_z=
+\operatorname{sat}_{[-0.8,0.8]}
+\left[
+0.008e_z+
+0.002
+\frac{e_z(k)-e_z(k-1)}
+{\Delta t}
+\right].
+}
+\end{equation}
+
+The objective is
+
+\begin{equation}
+c_y\rightarrow120.
+\end{equation}
+
+\section{12. Forward/Backward Control}
+
+The distance-related error controls forward and backward velocity.
+
+The gains are
+
+\begin{equation}
+K_{P,d}=0.05,\qquad
+K_{D,d}=0.01.
+\end{equation}
+
+The command is
+
+\begin{equation}
+\boxed{
+v_x=
+\operatorname{sat}_{[-1.5,1.5]}
+\left[
+0.05e_d+
+0.01
+\frac{e_d(k)-e_d(k-1)}
+{\Delta t}
+\right].
+}
+\end{equation}
+
+If $r_{px}<45$, then $e_d>0$ and the controller commands forward motion.
+
+If $r_{px}>45$, then $e_d<0$ and the controller commands backward motion.
+
+Thus,
+
+\begin{equation}
+r_{px}\rightarrow45
+\end{equation}
+
+represents maintaining the desired apparent distance.
+
+\section{13. Body-to-World Velocity Transformation}
+
+The forward command $v_x$ is defined relative to the UAV's current heading.
+
+Let the UAV rotation matrix be $\mathbf{R}_D$. Its forward direction in world coordinates is
+
+\begin{equation}
+\boxed{
+\mathbf{f}_D=
+\mathbf{R}_D
+\begin{bmatrix}
+1\\0\\0
+\end{bmatrix}.
+}
+\end{equation}
+
+The commanded world-frame velocity is
+
+\begin{equation}
+\boxed{
+\mathbf{v}_{world}
+=
+v_x\mathbf{f}_D+
+\begin{bmatrix}
+0\\0\\v_z
+\end{bmatrix}.
+}
+\end{equation}
+
+This transformation is essential because the UAV's forward direction changes when its yaw changes.
+
+\section{14. Desired Position and Yaw}
+
+The tracking velocity is converted into a short-term desired position using discrete integration:
+
+\begin{equation}
+\boxed{
+\mathbf{p}_{cmd}(k+1)
+=
+\mathbf{p}_D(k)+
+\mathbf{v}_{world}(k)\Delta t.
+}
+\end{equation}
+
+The commanded yaw is updated by integrating the yaw rate:
+
+\begin{equation}
+\boxed{
+\psi_{cmd}(k+1)
+=
+\psi_{cmd}(k)+
+\dot{\psi}(k)\Delta t.
+}
+\end{equation}
+
+The desired attitude supplied to the low-level controller is
+
+\begin{equation}
+\boxed{
+\boldsymbol{\phi}_{cmd}
+=
+\begin{bmatrix}
+0\\0\\\psi_{cmd}
+\end{bmatrix}.
+}
+\end{equation}
+
+The low-level \texttt{DSLPIDControl} controller then converts the desired position and orientation into the drone's motor commands.
+
+\section{15. Searching and Tracking}
+
+The system has two states:
+
+\begin{equation}
+\boxed{
+\text{SEARCHING}
+\qquad\text{and}\qquad
+\text{TRACKING}.
+}
+\end{equation}
+
+When the target is detected,
+
+\begin{equation}
+\text{found}=1,
+\end{equation}
+
+the controller operates in TRACKING mode.
+
+When the target is not detected,
+
+\begin{equation}
+\text{found}=0,
+\end{equation}
+
+the controller enters SEARCHING mode and commands
+
+\begin{equation}
+\boxed{
+v_x=0,\qquad
+v_y=0,\qquad
+v_z=0,\qquad
+\dot{\psi}=0.3.
+}
+\end{equation}
+
+This produces a slow yaw rotation to reacquire the target.
+
+\section{16. Closed-Loop System}
+
+The complete system can be represented mathematically by
+
+\begin{equation}
+\mathbf{s}(k)
+=
+h\left(
+\mathbf{x}_D(k),
+\mathbf{p}_T(k)
+\right),
+\end{equation}
+
+where $h(\cdot)$ represents the camera and target-detection process.
+
+The visual error is
+
+\begin{equation}
+\mathbf{e}(k)
+=
+\mathbf{s}(k)-\mathbf{s}^*.
+\end{equation}
+
+The controller produces
+
+\begin{equation}
+\mathbf{u}(k)
+=
+\begin{bmatrix}
+v_x(k)\\
+v_z(k)\\
+\dot{\psi}(k)
+\end{bmatrix}.
+\end{equation}
+
+The UAV state evolves according to
+
+\begin{equation}
+\mathbf{x}_D(k+1)
+=
+f\left(
+\mathbf{x}_D(k),
+\mathbf{u}(k)
+\right).
+\end{equation}
+
+The new UAV state produces a new camera observation:
+
+\begin{equation}
+\mathbf{s}(k+1)
+=
+h\left(
+\mathbf{x}_D(k+1),
+\mathbf{p}_T(k+1)
+\right).
+\end{equation}
+
+Therefore, the closed-loop operation is
+
+\begin{equation}
+\boxed{
+\mathbf{s}(k)
+\rightarrow
+\mathbf{e}(k)
+\rightarrow
+\mathbf{u}(k)
+\rightarrow
+\mathbf{x}_D(k+1)
+\rightarrow
+\mathbf{s}(k+1).
+}
+\end{equation}
+
+This loop is repeated continuously throughout the simulation.
+
+\section{17. Overall Tracking Objective}
+
+A mathematical cost function that describes the tracking objective is
+
+\begin{equation}
+\boxed{
+J=w_xe_x^2+w_ze_z^2+w_de_d^2
+}
+\end{equation}
+
+where $w_x,w_z,w_d>0$ are weighting factors.
+
+The ideal tracking condition is
+
+\begin{equation}
+e_x=0,\qquad
+e_z=0,\qquad
+e_d=0.
+\end{equation}
+
+Equivalently,
+
+\begin{equation}
+\boxed{
+c_x=160,\qquad
+c_y=120,\qquad
+r_{px}=45.
+}
+\end{equation}
+
+The implementation does not explicitly optimize $J$; this equation mathematically describes the desired behaviour of the controller.
+
+\section{18. Overall Mathematical Interpretation}
+
+The entire project can be summarized as follows:
+
+\begin{equation}
+\boxed{
+\text{Moving Target}
+\rightarrow
+\text{3-D Camera Observation}
+\rightarrow
+\text{HSV Segmentation}
+\rightarrow
+(c_x,c_y,r_{px})
+\rightarrow
+(e_x,e_z,e_d)
+\rightarrow
+\text{PD Control}
+\rightarrow
+(v_x,v_z,\dot{\psi})
+\rightarrow
+\text{Coordinate Transformation}
+\rightarrow
+\text{Desired UAV State}
+\rightarrow
+\text{UAV Motion}
+\rightarrow
+\text{New Camera Observation}.
+}
+\end{equation}
+
+The fundamental tracking condition is
+
+\begin{equation}
+\boxed{
+\lim_{k\rightarrow\infty}
+\begin{bmatrix}
+c_x(k)-160\\
+c_y(k)-120\\
+r_{px}(k)-45
+\end{bmatrix}
+=
+\mathbf{0}.
+}
+\end{equation}
+
+In practical terms, the UAV continuously adjusts its yaw, altitude, and forward/backward movement so that the moving target remains centred in the camera image and maintains the desired apparent size.
+
+\section{19. Key Mathematical Relationships}
+
+The most important relationships in the project are:
+
+\begin{equation}
+\boxed{
+c_x\rightarrow160
+\quad\Rightarrow\quad
+\text{horizontal alignment}
+}
+\end{equation}
+
+\begin{equation}
+\boxed{
+c_y\rightarrow120
+\quad\Rightarrow\quad
+\text{vertical alignment}
+}
+\end{equation}
+
+\begin{equation}
+\boxed{
+r_{px}\rightarrow45
+\quad\Rightarrow\quad
+\text{desired relative distance}
+}
+\end{equation}
+
+and
+
+\begin{equation}
+\boxed{
+u=K_Pe+K_D\frac{\Delta e}{\Delta t}
+\quad\Rightarrow\quad
+\text{corrective UAV motion}.
+}
+\end{equation}
+
+Together, these equations explain the mathematical working of the vision-based UAV tracking system.
+
+\end{document}
