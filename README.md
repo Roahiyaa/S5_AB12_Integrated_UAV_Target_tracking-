@@ -50,6 +50,14 @@ If `track_demo.py` throws an import or attribute error:
    `camera_tracker.py`) don't depend on the env internals, so they
    won't need changes.
 
+##  Mathematical Interpretation
+
+The complete mathematical formulation of the UAV target tracking system is documented in the following document.
+
+  [View Mathematical Interpretation](simulation/documentation/Mathematical_Interpretation.pdf)
+
+  [View LaTeX Source](simulation/documentation/Mathematical_Interpretation.tex)
+
 ## Suggested build order (weekend plan)
 
 1. **Confirm the base env runs** — comment out the tracking pieces,
